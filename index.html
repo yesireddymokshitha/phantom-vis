@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>PhantomVis</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0a0f;
+      color: #e0e0e0;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    #header {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(10,10,20,0.85);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid rgba(255,255,0,0.12);
+      z-index: 100;
+    }
+    #logo {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 3px;
+      color: #ffff00;
+      text-transform: uppercase;
+    }
+    #logo span { color: rgba(255,255,0,0.35); }
+    #status-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 11px;
+      color: rgba(255,255,0,0.55);
+      letter-spacing: 1.5px;
+    }
+    #status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #333;
+      transition: background 0.4s, box-shadow 0.4s;
+    }
+    #status-dot.active {
+      background: #ffff00;
+      box-shadow: 0 0 10px #ffff00;
+    }
+    #canvas-container {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+    }
+    #video {
+      position: absolute;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1);
+      opacity: 1;
+    }
+    #canvas {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+    }
+    #hud {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      padding: 14px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(10,10,20,0.8);
+      backdrop-filter: blur(8px);
+      border-top: 1px solid rgba(255,255,0,0.10);
+      z-index: 100;
+    }
+    .hud-stat {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+    .hud-label {
+      font-size: 10px;
+      letter-spacing: 2px;
+      color: rgba(255,255,0,0.4);
+      text-transform: uppercase;
+    }
+    .hud-value {
+      font-size: 20px;
+      font-weight: 600;
+      color: #ffff00;
+      min-width: 40px;
+      text-align: center;
+    }
+    #mode-badge {
+      position: fixed;
+      top: 68px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 5px 20px;
+      border: 1px solid rgba(255,255,0,0.45);
+      border-radius: 20px;
+      font-size: 11px;
+      letter-spacing: 3px;
+      color: #ffff00;
+      background: rgba(255,255,0,0.06);
+      text-transform: uppercase;
+      opacity: 0;
+      transition: opacity 0.35s;
+      z-index: 100;
+      white-space: nowrap;
+    }
+    #loading {
+      position: fixed;
+      inset: 0;
+      background: #0a0a0f;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      z-index: 200;
+      transition: opacity 0.6s;
+    }
+    #loading-title {
+      font-size: 32px;
+      font-weight: 700;
+      letter-spacing: 7px;
+      color: #ffff00;
+      text-transform: uppercase;
+    }
+    #loading-sub {
+      font-size: 11px;
+      letter-spacing: 2.5px;
+      color: rgba(255,255,0,0.4);
+      text-transform: uppercase;
+    }
+    .loader-bar {
+      width: 200px; height: 2px;
+      background: rgba(255,255,0,0.12);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .loader-fill {
+      height: 100%;
+      background: #ffff00;
+      border-radius: 2px;
+      animation: load 2s ease forwards;
+    }
+    @keyframes load { from { width: 0; } to { width: 100%; } }
+    #error-msg {
+      position: fixed;
+      top: 78px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(255,40,40,0.10);
+      border: 1px solid rgba(255,40,40,0.35);
+      color: #ff7070;
+      padding: 10px 22px;
+      border-radius: 8px;
+      font-size: 13px;
+      display: none;
+      z-index: 300;
+      text-align: center;
+    }
+    .hint {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: rgba(255,255,0,0.18);
+      font-size: 14px;
+      letter-spacing: 2px;
+      text-align: center;
+      line-height: 2;
+      pointer-events: none;
+      transition: opacity 0.5s;
+    }
+  </style>
+</head>
+<body>
+
+<div id="loading">
+  <div id="loading-title">Phantom<span style="color:rgba(255,255,0,0.3)">Vis</span></div>
+  <div id="loading-sub">Initialising hand tracking</div>
+  <div class="loader-bar"><div class="loader-fill"></div></div>
+</div>
+
+<div id="error-msg"></div>
+
+<div id="header">
+  <div id="logo">Phantom<span>Vis</span></div>
+  <div id="status-bar">
+    <div id="status-dot"></div>
+    <span id="status-text">IDLE</span>
+  </div>
+</div>
+
+<div id="mode-badge">—</div>
+
+<div class="hint" id="hint">
+  SHOW ONE HAND — CUBE<br>
+  SHOW TWO HANDS — ENERGY
+</div>
+
+<div id="canvas-container">
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="canvas"></canvas>
+</div>
+
+<div id="hud">
+  <div class="hud-stat">
+    <div class="hud-label">Hands</div>
+    <div class="hud-value" id="hand-count">0</div>
+  </div>
+  <div class="hud-stat">
+    <div class="hud-label">Mode</div>
+    <div class="hud-value" id="mode-text">—</div>
+  </div>
+  <div class="hud-stat">
+    <div class="hud-label">Size</div>
+    <div class="hud-value" id="size-val">—</div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+<script>
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const loading = document.getElementById('loading');
+const statusDot = document.getElementById('status-dot');
+const statusText = document.getElementById('status-text');
+const modeBadge = document.getElementById('mode-badge');
+const handCountEl = document.getElementById('hand-count');
+const modeTextEl = document.getElementById('mode-text');
+const sizeValEl = document.getElementById('size-val');
+const errorMsg = document.getElementById('error-msg');
+const hint = document.getElementById('hint');
+
+let pulse = 0;
+let prevCx = 0, prevCy = 0;
+const smoothFactor = 0.18;
+let frameCount = 0;
+let lastHandCount = -1;
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+function rotatePoint(cx, cy, x, y, angle) {
+  const rad = angle * Math.PI / 180;
+  const cos = Math.cos(rad), sin = Math.sin(rad);
+  return [
+    Math.round(cos * (x - cx) - sin * (y - cy) + cx),
+    Math.round(sin * (x - cx) + cos * (y - cy) + cy)
+  ];
+}
+
+function drawCube(ix, iy, tx, ty, rx, ry, lx, ly) {
+  const cx = (ix + tx) >> 1;
+  const cy = (iy + ty) >> 1;
+  let size = Math.hypot(lx - tx, ly - ty) | 0;
+  size = Math.max(40, Math.min(size, 200));
+  let angle = Math.atan2(iy - ty, ix - tx) * 180 / Math.PI;
+  angle += (rx - cx) * 0.05;
+
+  const s = size >> 1;
+  const offset = (s * 0.7) | 0;
+  const glowPulse = 6 + 3 * Math.sin(pulse);
+
+  const rawFront = [
+    [cx - s, cy - s], [cx + s, cy - s],
+    [cx + s, cy + s], [cx - s, cy + s]
+  ];
+  const rawBack = rawFront.map(([x, y]) => [x + offset, y - offset]);
+  const front = rawFront.map(([x, y]) => rotatePoint(cx, cy, x, y, angle));
+  const back  = rawBack.map(([x, y])  => rotatePoint(cx, cy, x, y, angle));
+
+  ctx.save();
+
+  // Side faces
+  for (let i = 0; i < 4; i++) {
+    const ni = (i + 1) % 4;
+    ctx.beginPath();
+    ctx.moveTo(...front[i]);
+    ctx.lineTo(...front[ni]);
+    ctx.lineTo(...back[ni]);
+    ctx.lineTo(...back[i]);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(255,255,0,0.05)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,0,0.15)';
+    ctx.lineWidth = 0.5;
+    ctx.stroke();
+  }
+
+  // Front face fill
+  ctx.beginPath();
+  ctx.moveTo(...front[0]);
+  front.forEach(p => ctx.lineTo(...p));
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(255,255,0,0.07)';
+  ctx.fill();
+
+  // Glow edges
+  ctx.shadowColor = '#ffff00';
+  ctx.shadowBlur = glowPulse;
+
+  const edge = (p1, p2, w) => {
+    ctx.beginPath();
+    ctx.moveTo(...p1);
+    ctx.lineTo(...p2);
+    ctx.strokeStyle = '#ffff00';
+    ctx.lineWidth = w;
+    ctx.stroke();
+  };
+
+  for (let i = 0; i < 4; i++) {
+    edge(front[i], front[(i + 1) % 4], 2);
+    edge(back[i], back[(i + 1) % 4], 1.5);
+    edge(front[i], back[i], 1.2);
+  }
+
+  ctx.shadowBlur = 0;
+
+  // Vertex dots
+  [...front, ...back].forEach(([x, y], i) => {
+    ctx.beginPath();
+    ctx.arc(x, y, i < 4 ? 4 : 3, 0, Math.PI * 2);
+    ctx.shadowColor = '#ffff00';
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = i < 4 ? '#ffff00' : 'rgba(255,255,0,0.6)';
+    ctx.fill();
+  });
+
+  ctx.shadowBlur = 0;
+  ctx.restore();
+
+  // Center cross-hair
+  ctx.beginPath();
+  ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(255,255,0,0.5)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+}
+
+function drawEnergyBall(cx, cy, radius, pulse) {
+  // radius is already the hand distance / 2, passed directly
+
+  // Update all particles
+  particles.forEach(p => {
+    p.x += p.vx;
+    p.y += p.vy;
+    const dist = Math.hypot(p.x, p.y);
+    if (dist > 0.93) {
+      const nx = p.x / dist, ny = p.y / dist;
+      const dot = p.vx * nx + p.vy * ny;
+      p.vx -= 2 * dot * nx;
+      p.vy -= 2 * dot * ny;
+      // tiny random deflection so they don't get stuck
+      p.vx += (Math.random() - 0.5) * 0.002;
+      p.vy += (Math.random() - 0.5) * 0.002;
+      p.x = nx * 0.92;
+      p.y = ny * 0.92;
+    }
+  });
+
+  // Clip all drawing to circle
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.clip();
+
+  // Dark interior
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(30,0,0,0.6)';
+  ctx.fill();
+
+  // Draw all particles — batch by color for performance
+  // Draw red particles
+  ctx.shadowColor = '#ff1100';
+  ctx.shadowBlur = 5;
+  particles.forEach(p => {
+    const px = cx + p.x * radius;
+    const py = cy + p.y * radius;
+    ctx.beginPath();
+    ctx.arc(px, py, p.size, 0, Math.PI * 2);
+    ctx.fillStyle = p.hue > 0
+      ? `rgba(255,${p.hue * 3},0,${p.alpha})`
+      : `rgba(255,${(p.size * 8)|0},0,${p.alpha})`;
+    ctx.fill();
+  });
+  ctx.shadowBlur = 0;
+  ctx.restore();
+
+  // Glowing red border ring
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.strokeStyle = `rgba(255,0,0,${0.8 + 0.2 * Math.sin(pulse * 2)})`;
+  ctx.lineWidth = 3;
+  ctx.shadowColor = '#ff0000';
+  ctx.shadowBlur = 18;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+}
+
+// Mirror landmark X to match the flipped video display
+function mx(lm, W) { return W - lm.x * W; }
+function my(lm, H) { return lm.y * H; }
+
+function drawSkeleton(lms, W, H) {
+  const connections = [
+    [0,1],[1,2],[2,3],[3,4],
+    [0,5],[5,6],[6,7],[7,8],
+    [0,9],[9,10],[10,11],[11,12],
+    [0,13],[13,14],[14,15],[15,16],
+    [0,17],[17,18],[18,19],[19,20],
+    [5,9],[9,13],[13,17]
+  ];
+
+  connections.forEach(([a, b]) => {
+    ctx.beginPath();
+    ctx.moveTo(mx(lms[a], W), my(lms[a], H));
+    ctx.lineTo(mx(lms[b], W), my(lms[b], H));
+    ctx.strokeStyle = 'rgba(255,255,0,0.22)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  });
+
+  lms.forEach((lm, i) => {
+    const r = i === 0 ? 6 : (i % 4 === 0 ? 4 : 3);
+    ctx.beginPath();
+    ctx.arc(mx(lm, W), my(lm, H), r, 0, Math.PI * 2);
+    ctx.fillStyle = i === 0 ? 'rgba(255,255,0,0.95)' : 'rgba(255,255,0,0.5)';
+    ctx.shadowColor = '#ffff00';
+    ctx.shadowBlur = i === 0 ? 10 : 5;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  });
+}
+
+function showMode(name) {
+  modeBadge.textContent = name || '';
+  modeBadge.style.opacity = name ? '1' : '0';
+  modeTextEl.textContent = name || '—';
+}
+
+function setStatus(active) {
+  statusDot.className = active ? 'active' : '';
+  statusText.textContent = active ? 'TRACKING' : 'IDLE';
+}
+
+// Red particle system - dense field
+const NUM_PARTICLES = 1000;
+const particles = Array.from({ length: NUM_PARTICLES }, () => {
+  const angle = Math.random() * Math.PI * 2;
+  const r = Math.sqrt(Math.random()) * 0.88; // sqrt for uniform area distribution
+  const speed = 0.012 + Math.random() * 0.028;
+  const dir = Math.random() * Math.PI * 2;
+  return {
+    x: Math.cos(angle) * r,
+    y: Math.sin(angle) * r,
+    vx: Math.cos(dir) * speed,
+    vy: Math.sin(dir) * speed,
+    size: 0.8 + Math.random() * 2.0,
+    alpha: 0.55 + Math.random() * 0.45,
+    hue: Math.random() < 0.15 ? 20 : 0, // mostly red, few orange
+  };
+});
+
+const hands = new Hands({
+  locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
+});
+
+hands.setOptions({
+  maxNumHands: 2,
+  modelComplexity: 1,
+  minDetectionConfidence: 0.7,
+  minTrackingConfidence: 0.6
+});
+
+hands.onResults(results => {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  frameCount++;
+
+  const W = canvas.width, H = canvas.height;
+
+  // Scanlines
+  if (frameCount % 4 === 0) {
+    ctx.fillStyle = 'rgba(255,255,0,0.008)';
+    for (let y = 0; y < H; y += 5) {
+      ctx.fillRect(0, y, W, 1);
+    }
+  }
+
+  const handData = [];
+
+  if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+    results.multiHandLandmarks.forEach(lms => {
+      drawSkeleton(lms, W, H);
+      // Use mirrored X (W - lm.x*W) to match flipped video
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      lms.forEach(lm => {
+        const px = mx(lm, W), py = my(lm, H);
+        if (px < minX) minX = px;
+        if (px > maxX) maxX = px;
+        if (py < minY) minY = py;
+        if (py > maxY) maxY = py;
+      });
+      const cx = ((minX + maxX) / 2) | 0;
+      const cy = ((minY + maxY) / 2) | 0;
+      const span = Math.max(maxX - minX, maxY - minY);
+      const size = Math.max(40, Math.min(span * 0.5, 200)) | 0;
+      handData.push({ lms, cx, cy, size });
+    });
+  }
+
+  const count = handData.length;
+  handCountEl.textContent = count;
+
+  if (count !== lastHandCount) {
+    hint.style.opacity = count > 0 ? '0' : '1';
+    lastHandCount = count;
+  }
+
+  if (count === 0) {
+    setStatus(false);
+    showMode('');
+    sizeValEl.textContent = '—';
+
+  } else if (count === 1) {
+    setStatus(true);
+    const { lms, cx, cy, size } = handData[0];
+    // All coords already mirrored via mx/my
+    const wrist    = { x: mx(lms[0],  W), y: my(lms[0],  H) };
+    const indexTip = { x: mx(lms[8],  W), y: my(lms[8],  H) };
+    const middleTip= { x: mx(lms[12], W), y: my(lms[12], H) };
+    const pinkyBase= { x: mx(lms[17], W), y: my(lms[17], H) };
+    drawCube(indexTip.x, indexTip.y, wrist.x, wrist.y, middleTip.x, middleTip.y, pinkyBase.x, pinkyBase.y);
+    showMode('CUBE');
+    sizeValEl.textContent = size;
+
+  } else {
+    setStatus(true);
+    const h1 = handData[0], h2 = handData[1];
+    // cx/cy are already mirrored from handData construction
+    const handDist = Math.hypot(h2.cx - h1.cx, h2.cy - h1.cy);
+    const MERGE = 70;
+
+    const tCx = (h1.cx + h2.cx) >> 1;
+    const tCy = (h1.cy + h2.cy) >> 1;
+    prevCx = (prevCx + (tCx - prevCx) * smoothFactor) | 0;
+    prevCy = (prevCy + (tCy - prevCy) * smoothFactor) | 0;
+
+    const bSize = Math.max(30, (handDist / 2) | 0); // no upper cap — grows with hand spread
+
+    // No beam line - circle only
+
+    if (handDist >= MERGE) {
+      drawEnergyBall(prevCx, prevCy, bSize, pulse);
+      showMode('ENERGY');
+    } else {
+      if (bSize > 10) drawEnergyBall(prevCx, prevCy, bSize, pulse);
+      showMode('COMPRESS');
+    }
+    sizeValEl.textContent = Math.round(handDist);
+    pulse += 0.2;
+  }
+});
+
+async function start() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: 1280, height: 720, facingMode: 'user' }
+    });
+    video.srcObject = stream;
+    await video.play();
+
+    const camera = new Camera(video, {
+      onFrame: async () => { await hands.send({ image: video }); },
+      width: 1280,
+      height: 720
+    });
+    camera.start();
+
+    setTimeout(() => {
+      loading.style.opacity = '0';
+      setTimeout(() => { loading.style.display = 'none'; }, 600);
+    }, 2400);
+
+  } catch (err) {
+    errorMsg.textContent = 'Camera access denied — please allow webcam permissions and reload.';
+    errorMsg.style.display = 'block';
+    loading.style.opacity = '0';
+    setTimeout(() => { loading.style.display = 'none'; }, 600);
+  }
+}
+
+start();
+</script>
+</body>
+</html>
